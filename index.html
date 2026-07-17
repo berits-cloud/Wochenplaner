@@ -107,7 +107,8 @@
   dialog::backdrop{background:rgba(20,18,14,.35)}
   .modal-in{padding:20px;max-height:86vh;overflow:auto}
   .modal-in h3{font-size:17px}
-  .close-x{float:right;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .close-x{float:right;border:none;background:none;font-size:22px;cursor:pointer;color:var(--muted);line-height:1;outline:none;-webkit-tap-highlight-color:transparent}
+  .close-x:focus,.close-x:focus-visible{outline:none;box-shadow:none}
   .flex-between{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
   .ing-row{display:grid;grid-template-columns:1fr 70px 90px auto;gap:6px;margin-bottom:6px;align-items:center}
   .tag{font-size:11px;color:var(--muted);background:#f2efe8;padding:2px 7px;border-radius:10px}
