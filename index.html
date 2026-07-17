@@ -20,10 +20,9 @@
   h1{font-size:24px;margin:0;font-weight:700;letter-spacing:-.02em}
   .sub{color:var(--muted);font-size:14px;margin-top:2px}
   .wrap{max-width:1100px;margin:0 auto;padding:0 20px 60px}
-  nav{display:flex;gap:6px;flex-wrap:nowrap;overflow-x:auto;-webkit-overflow-scrolling:touch;margin:14px 0 20px;position:sticky;top:0;
-    background:var(--bg);padding:10px 0;z-index:20;border-bottom:1px solid var(--line);scrollbar-width:none}
-  nav::-webkit-scrollbar{height:0;display:none}
-  .tab{flex:0 0 auto;white-space:nowrap;border:none;background:transparent;color:var(--muted);font-size:15px;font-weight:600;
+  nav{display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 20px;position:sticky;top:0;
+    background:var(--bg);padding:10px 0;z-index:20;border-bottom:1px solid var(--line)}
+  .tab{white-space:nowrap;border:none;background:transparent;color:var(--muted);font-size:15px;font-weight:600;
     padding:9px 14px;border-radius:10px;cursor:pointer;transition:.15s}
   .tab:hover{background:var(--card)}
   .tab.active{background:var(--ink);color:#fff}
@@ -112,7 +111,7 @@
     .n4{grid-template-columns:repeat(2,1fr)}.ing-row{grid-template-columns:1fr 60px 70px auto}
     header{padding:16px 14px 10px}.wrap{padding:0 14px 60px}
     h1{font-size:20px}.tab{font-size:14px;padding:8px 12px}
-    nav{gap:2px}
+    nav{gap:2px;position:static;top:auto}
     .weekgrid{grid-template-columns:1fr}
   }
 </style>
@@ -303,12 +302,16 @@
   <section id="tab-daten" hidden>
     <div class="card">
       <h2>Daten sichern</h2>
-      <p class="hint">Deine Daten werden automatisch in diesem Browser gespeichert. Für ein Backup oder den Wechsel auf ein anderes Gerät kannst du sie exportieren und importieren.</p>
-      <div class="row">
-        <button class="btn sec" id="exportBtn">⬇︎ Export (Backup speichern)</button>
-        <button class="btn ghost" id="importBtn">⬆︎ Import (Backup laden)</button>
-        <input type="file" id="importFile" accept="application/json" hidden>
-      </div>
+      <p class="hint">Deine Daten werden automatisch in diesem Browser gespeichert. Für ein Backup oder den Wechsel auf ein anderes Gerät kannst du eine Sicherungs-Datei speichern.</p>
+      <button class="btn sec" id="exportBtn">💾 Backup speichern</button>
+      <p class="hint" style="margin-top:8px">Du erhältst eine Datei <b>„Mein-Wochenplaner.html"</b> mit allen deinen Daten. <b>Zum Wiederherstellen einfach diese Datei öffnen</b> (Doppelklick) — kein Importieren nötig. So kannst du sie auch auf ein anderes Gerät kopieren.</p>
+      <details style="margin-top:14px">
+        <summary class="hint" style="cursor:pointer">Alte JSON-Sicherung laden (falls vorhanden)</summary>
+        <div class="row" style="margin-top:8px">
+          <button class="btn ghost" id="importBtn">⬆︎ JSON importieren</button>
+          <input type="file" id="importFile" accept="application/json,.json,application/octet-stream" hidden>
+        </div>
+      </details>
       <p class="hint" style="margin-top:16px">Alles zurücksetzen (Rezepte, Personen, Plan):</p>
       <button class="btn danger" id="resetAll">Alles zurücksetzen</button>
     </div>
@@ -534,10 +537,13 @@ function defaultState(){
 
 let state;
 const KEY="wochenplaner_v2";
+let EMBEDDED_STATE=null; // __SEED__  (Backup-Datei füllt hier deine Daten ein)
 function load(){
   try{const raw=localStorage.getItem(KEY);if(raw){state=JSON.parse(raw);migrate();return;}}catch(e){}
   // try migrating from v1
   try{const old=localStorage.getItem("wochenplaner_v1");if(old){state=JSON.parse(old);migrate();return;}}catch(e){}
+  // aus einer Backup-Datei eingebettete Daten
+  if(EMBEDDED_STATE){try{state=EMBEDDED_STATE;migrate();save();return;}catch(e){}}
   state=defaultState();
 }
 function migrate(){
@@ -589,7 +595,6 @@ document.getElementById("nav").addEventListener("click",e=>{
   if(tab==="einkauf")renderShop();
   if(tab==="naehrwerte")renderNutri();
   if(tab==="zutaten")renderIngredients();
-  try{b.scrollIntoView({inline:"center",block:"nearest"});}catch(_){}
   window.scrollTo(0,0);
 });
 
@@ -1286,8 +1291,19 @@ function renderNutri(){
 
 // ---------- Data ----------
 document.getElementById("exportBtn").onclick=()=>{
-  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="wochenplaner-backup.json";a.click();
+  // Backup = komplette App-Datei mit eingebetteten Daten (öffnen = wiederherstellen)
+  const ids=["weekgrid","recipeList","personList","ingTable","shopList","nutriView","ingRows","mealBody"];
+  const saved={};ids.forEach(id=>{const el=document.getElementById(id);if(el){saved[id]=el.innerHTML;el.innerHTML="";}});
+  document.querySelectorAll("dialog[open]").forEach(d=>{try{d.close();}catch(e){}});
+  const json=JSON.stringify(state).replace(/</g,"\\u003c");
+  const marker="let EMBEDDED_STATE=null; // __SEED__";
+  let html=document.documentElement.outerHTML;
+  ids.forEach(id=>{const el=document.getElementById(id);if(el&&saved[id]!==undefined)el.innerHTML=saved[id];});
+  if(html.indexOf(marker)<0){alert("Backup konnte nicht erstellt werden. Bitte die Original-Datei verwenden.");return;}
+  html=html.replace(marker,"let EMBEDDED_STATE="+json+"; // __SEED__");
+  const blob=new Blob(["<!DOCTYPE html>\n"+html],{type:"text/html"});
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download="Mein-Wochenplaner.html";a.click();
+  renderAll();
 };
 document.getElementById("importBtn").onclick=()=>document.getElementById("importFile").click();
 document.getElementById("importFile").onchange=e=>{
