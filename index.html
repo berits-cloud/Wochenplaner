@@ -832,7 +832,9 @@ function pickDay(slotMeals,fixed,tgt,priority,usage,warmFlags,typeFlags){
   else{combos=[];for(let t=0;t<6000;t++)combos.push(pools.map(p=>p[Math.floor(Math.random()*p.length)]));}
   const scored=combos.map(cmb=>({cmb,s:comboScore(cmb,tgt,priority,usage)}));
   scored.sort((a,b)=>a.s-b.s);
-  const near=scored.filter(x=>x.s<=scored[0].s+0.015);
+  // mehr Abwechslung: zufällig aus mehreren gut passenden Kombis wählen (Portionsskalierung trifft das Ziel ohnehin)
+  let near=scored.filter(x=>x.s<=scored[0].s+0.06);
+  if(near.length<8)near=scored.slice(0,Math.min(8,scored.length));
   return near[Math.floor(Math.random()*near.length)].cmb;
 }
 // portions scaled to hit each person's daily target
