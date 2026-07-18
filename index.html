@@ -103,6 +103,8 @@
   .daydot{width:9px;height:9px;border-radius:50%;background:var(--line);border:none;padding:0;cursor:pointer;transition:.15s}
   .daydot.on{background:var(--accent);width:24px;border-radius:5px}
   .swipehint{display:none;text-align:center;color:var(--muted);font-size:12px;margin:2px 0 8px}
+  #scanVideo{width:100%;background:#000;border-radius:12px;overflow:hidden;min-height:220px;position:relative}
+  #scanVideo video,#scanVideo canvas{width:100%!important;height:auto!important;display:block}
   dialog{border:none;border-radius:16px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.25);max-width:560px;width:92%}
   dialog::backdrop{background:rgba(20,18,14,.35)}
   .modal-in{padding:20px;max-height:86vh;overflow:auto}
@@ -261,7 +263,11 @@
       <table class="amt-table" id="ingTable"></table>
     </div>
     <div class="card">
-      <h3>Neue Zutat hinzufügen</h3>
+      <div class="flex-between">
+        <h3 style="margin:0">Neue Zutat hinzufügen</h3>
+        <button class="btn sec" id="scanBtn">📷 Barcode scannen</button>
+      </div>
+      <p class="hint" style="margin:8px 0 12px">Tipp: Mit „Barcode scannen" die Nährwerte eines Produkts automatisch holen (Handy-Kamera, funktioniert wenn die App über einen Link läuft).</p>
       <div class="row" style="gap:10px;align-items:flex-end">
         <div style="min-width:150px"><label>Name</label><input id="niName" placeholder="z.B. Magerquark"></div>
         <div style="width:85px"><label>Eiweiß/100g</label><input id="niP" type="number" min="0" value="0"></div>
@@ -392,6 +398,17 @@
       <button class="btn ghost" data-close>Abbrechen</button>
       <button class="btn" id="savePerson">Speichern</button>
     </div>
+  </div>
+</dialog>
+
+<!-- BARCODE-SCANNER -->
+<dialog id="scanDlg">
+  <div class="modal-in">
+    <button class="close-x" data-close>×</button>
+    <h3>Barcode scannen</h3>
+    <p class="hint" id="scanStatus" style="margin:0 0 10px">Kamera wird gestartet…</p>
+    <div id="scanVideo"></div>
+    <div class="row" style="margin-top:14px;justify-content:flex-end"><button class="btn ghost" data-close>Abbrechen</button></div>
   </div>
 </dialog>
 
@@ -834,17 +851,22 @@ document.getElementById("weekgrid").addEventListener("click",e=>{
 });
 
 // ---------- Auto-fill (nutrition-aware) ----------
-function comboScore(recipes,tgt,priority,usage){
-  let k=0,pr=0,ca=0,fa=0;recipes.forEach(r=>{if(!r)return;k+=r.nutrition.kcal;pr+=r.nutrition.protein;ca+=r.nutrition.carbs;fa+=r.nutrition.fat;});
-  // optimale Portionsskalierung f für dieses Kombi (trifft die Priorität exakt), dann Restabweichung über ALLE Makros
-  let f=priority==="protein"?(pr>0?tgt.protein/pr:(k>0?tgt.kcal/k:1)):(k>0?tgt.kcal/k:1);
+function personResidual(k,pr,ca,fa,t,priority){
+  if(k<=0)return 2;
+  let f=priority==="protein"?(pr>0?t.protein/pr:t.kcal/k):(t.kcal/k);
   f=Math.max(0.25,Math.min(3,f));
-  const dev=(t,v)=>t?Math.abs(v*f-t)/t:0;
-  const dk=dev(tgt.kcal,k),dp=dev(tgt.protein,pr),dc=dev(tgt.carbs,ca),df=dev(tgt.fat,fa);
-  let base;
-  if(priority==="protein")base=dp*1.5+dk+dc*0.8+df*0.8;
-  else if(priority==="balanced")base=dk+dp+dc+df;
-  else base=dk*1.5+dp+dc*0.8+df*0.8;
+  const dev=(tt,v)=>tt?Math.abs(v*f-tt)/tt:0;
+  const dk=dev(t.kcal,k),dp=dev(t.protein,pr),dc=dev(t.carbs,ca),df=dev(t.fat,fa);
+  if(priority==="protein")return dp*1.5+dk+dc*0.8+df*0.8;
+  if(priority==="balanced")return dk+dp+dc+df;
+  return dk*1.5+dp+dc*0.8+df*0.8;
+}
+function comboScore(recipes,people,priority,usage){
+  let k=0,pr=0,ca=0,fa=0;recipes.forEach(r=>{if(!r)return;k+=r.nutrition.kcal;pr+=r.nutrition.protein;ca+=r.nutrition.carbs;fa+=r.nutrition.fat;});
+  // Restabweichung über ALLE Makros, gemittelt über ALLE Personen (jede mit eigener Portionsskalierung)
+  let base=0,n=0;
+  people.forEach(p=>{if(p.targets&&p.targets.kcal){base+=personResidual(k,pr,ca,fa,p.targets,priority);n++;}});
+  base=n?base/n:personResidual(k,pr,ca,fa,{kcal:2000,protein:100,carbs:250,fat:65},priority);
   let use=0;recipes.forEach(r=>{if(r)use+=(usage[r.id]||0);});
   const seen={};let dup=0;recipes.forEach(r=>{if(!r)return;if(seen[r.id])dup++;seen[r.id]=1;});
   return base+use*0.05+dup*0.5;
@@ -852,7 +874,7 @@ function comboScore(recipes,tgt,priority,usage){
 function cartesian(pools){
   return pools.reduce((acc,pool)=>{const out=[];acc.forEach(a=>pool.forEach(p=>out.push([...a,p])));return out;},[[]]);
 }
-function pickDay(slotMeals,fixed,tgt,priority,usage,warmFlags,typeFlags){
+function pickDay(slotMeals,fixed,people,priority,usage,warmFlags,typeFlags){
   const pools=slotMeals.map((mk,i)=>{
     if(fixed[i])return[fixed[i]];
     const cand=recipesForMeal(mk,warmFlags?warmFlags[i]:undefined,typeFlags?typeFlags[i]:undefined);return cand.length?cand:[null];
@@ -861,7 +883,7 @@ function pickDay(slotMeals,fixed,tgt,priority,usage,warmFlags,typeFlags){
   let combos;
   if(total<=20000){combos=cartesian(pools);}
   else{combos=[];for(let t=0;t<6000;t++)combos.push(pools.map(p=>p[Math.floor(Math.random()*p.length)]));}
-  const scored=combos.map(cmb=>({cmb,s:comboScore(cmb,tgt,priority,usage)}));
+  const scored=combos.map(cmb=>({cmb,s:comboScore(cmb,people,priority,usage)}));
   scored.sort((a,b)=>a.s-b.s);
   // mehr Abwechslung: zufällig aus mehreren gut passenden Kombis wählen (Portionsskalierung trifft das Ziel ohnehin)
   let near=scored.filter(x=>x.s<=scored[0].s+0.06);
@@ -873,23 +895,35 @@ function servingsFor(slot,p){return slot.portions&&slot.portions[p.id]!=null?slo
 function clearAllPortions(){Object.values(state.plan).forEach(arr=>arr.forEach(s=>{if(s.portions)delete s.portions;}));}
 function rescaleDay(day){
   const pr=state.settings.priority;const arr=state.plan[day]||[];
-  state.people.forEach(p=>{
-    let sk=0,sp=0,sc=0,sf=0,count=0;
-    arr.forEach(s=>{const rec=state.recipes.find(r=>r.id===s.recipeId);if(rec&&s.eaters.includes(p.id)){sk+=rec.nutrition.kcal;sp+=rec.nutrition.protein;sc+=rec.nutrition.carbs;sf+=rec.nutrition.fat;count++;}});
-    let factor=p.portion;const t=p.targets;
-    if(count>0&&t&&t.kcal){
-      if(pr==="protein")factor=sp>0?t.protein/sp:(sk>0?t.kcal/sk:1);
-      else if(pr==="balanced"){
-        // Portionsgröße, die die Abweichung über alle vier Werte (normiert) minimiert
-        const terms=[[sk,t.kcal],[sp,t.protein],[sc,t.carbs],[sf,t.fat]].filter(([v,tt])=>tt>0&&v>0);
-        let num=0,den=0;terms.forEach(([v,tt])=>{const r=v/tt;num+=r;den+=r*r;});
-        factor=den>0?num/den:(sk>0?t.kcal/sk:1);
-      }else factor=sk>0?t.kcal/sk:1;
-      factor=Math.round(Math.max(0.25,Math.min(3,factor))*100)/100;
+  const W=pr==="protein"?{k:0.3,p:1,c:0.3,f:0.3}:pr==="kcal"?{k:1,p:0.3,c:0.3,f:0.3}:{k:0,p:1,c:1,f:1};
+  const LO=0.25,HI=3,LAM=0.05,KEYS=["k","p","c","f"];
+  state.people.forEach(pp=>{
+    arr.forEach(s=>{if(!s.portions)s.portions={};});
+    const items=[];
+    arr.forEach(s=>{const rec=state.recipes.find(r=>r.id===s.recipeId);if(rec&&s.eaters.includes(pp.id))items.push({s,rec});});
+    // Slots ohne Rezept/nicht dabei: Eintrag entfernen
+    arr.forEach(s=>{if(!items.find(it=>it.s===s))delete s.portions[pp.id];});
+    if(items.length===0)return;
+    const t=pp.targets;
+    if(!t||!t.kcal){items.forEach(it=>it.s.portions[pp.id]=pp.portion);return;}
+    // meal-genaue Portionen: pro Person unterschiedlich viel je Mahlzeit, um Makros bestmöglich zu treffen
+    let sumK=0;items.forEach(it=>sumK+=it.rec.nutrition.kcal);
+    const fUni=Math.max(LO,Math.min(HI,sumK>0?t.kcal/sumK:1));
+    const tj={k:t.kcal,p:t.protein,c:t.carbs,f:t.fat};
+    const A=items.map(it=>({k:it.rec.nutrition.kcal/(tj.k||1),p:it.rec.nutrition.protein/(tj.p||1),c:it.rec.nutrition.carbs/(tj.c||1),f:it.rec.nutrition.fat/(tj.f||1)}));
+    const wj={k:tj.k?W.k:0,p:tj.p?W.p:0,c:tj.c?W.c:0,f:tj.f?W.f:0};
+    const f=items.map(()=>fUni);
+    const r={};KEYS.forEach(j=>{let s=0;items.forEach((_,i)=>s+=f[i]*A[i][j]);r[j]=s-1;});
+    for(let iter=0;iter<80;iter++){
+      for(let i=0;i<items.length;i++){
+        let denom=LAM,numer=LAM*fUni;
+        KEYS.forEach(j=>{const a=A[i][j];const rmi=r[j]-f[i]*a;denom+=wj[j]*a*a;numer+=-wj[j]*a*rmi;});
+        let fi=denom>0?numer/denom:f[i];
+        fi=Math.max(LO,Math.min(HI,fi));
+        const df=fi-f[i];KEYS.forEach(j=>{r[j]+=df*A[i][j];});f[i]=fi;
+      }
     }
-    arr.forEach(s=>{const rec=state.recipes.find(r=>r.id===s.recipeId);
-      if(!s.portions)s.portions={};
-      if(rec&&s.eaters.includes(p.id))s.portions[p.id]=factor;else delete s.portions[p.id];});
+    items.forEach((it,i)=>it.s.portions[pp.id]=Math.round(f[i]*20)/20);
   });
 }
 function applyScaling(){state.settings.days.forEach(d=>{if(state.plan[d])rescaleDay(d);});}
@@ -898,7 +932,7 @@ document.getElementById("genBtn").onclick=()=>{
   const meals=desiredMeals();
   if(meals.length===0){alert("Bitte mindestens eine Mahlzeit auswählen.");return;}
   const allEaters=state.people.map(p=>p.id);
-  const ref=activePerson();
+  const optimPeople=state.people.filter(p=>p.targets&&p.targets.kcal); // Auswahl wird über ALLE Personen mit Ziel optimiert
   const WARMPRIO={abendessen:0,mittag:1,fruehstueck:2,snack:3};
   const okVeg=r=>!state.settings.vegOnly||r.type==="vegan"||r.type==="vegetarisch";
   const prep=state.settings.mealPrep; // Vorkochen: alle Mahlzeiten für 2 Tage
@@ -952,9 +986,8 @@ document.getElementById("genBtn").onclick=()=>{
     }else{
       const fixed=slotMeals.map(()=>null);
       const typeFlags=typeFlagsByDay[d];
-      if(ref){
-        const tgt={kcal:ref.targets.kcal/ref.portion,protein:ref.targets.protein/ref.portion,carbs:ref.targets.carbs/ref.portion,fat:ref.targets.fat/ref.portion};
-        chosen=pickDay(slotMeals,fixed,tgt,state.settings.priority,usage,warmFlags,typeFlags);
+      if(optimPeople.length){
+        chosen=pickDay(slotMeals,fixed,optimPeople,state.settings.priority,usage,warmFlags,typeFlags);
       }else{
         chosen=slotMeals.map((mk,i)=>{const cand=recipesForMeal(mk,warmFlags[i],typeFlags[i]);return cand.length?cand[Math.floor(Math.random()*cand.length)]:null;});
       }
@@ -1054,6 +1087,58 @@ document.getElementById("ingTable").addEventListener("click",e=>{
     delete state.ingredients[name];recomputeAutoRecipes();save();renderIngredients();renderWeek();renderRecipes();
   }
 });
+// ---------- Barcode-Scanner ----------
+let scanBusy=false;
+function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
+function loadQuagga(cb){
+  if(window.Quagga)return cb();
+  const s=document.createElement("script");
+  s.src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js";
+  s.onload=()=>cb();
+  s.onerror=()=>scanStatus("Scanner-Bibliothek konnte nicht geladen werden — dafür ist Internet nötig.");
+  document.head.appendChild(s);
+}
+function stopScanner(){try{if(window.Quagga){Quagga.offDetected(onBarcode);Quagga.stop();}}catch(e){}}
+function onBarcode(res){
+  if(scanBusy)return;const code=res&&res.codeResult&&res.codeResult.code;if(!code)return;
+  scanBusy=true;stopScanner();lookupBarcode(code);
+}
+async function lookupBarcode(code){
+  scanStatus("Suche Produkt "+code+" …");
+  try{
+    const res=await fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(code)+".json?fields=product_name,brands,nutriments");
+    const data=await res.json();
+    if(!data||data.status!==1||!data.product){scanStatus("Kein Produkt zu diesem Code gefunden. Du kannst die Werte unten manuell eintragen.");return;}
+    const n=data.product.nutriments||{};
+    let name=data.product.product_name||("Produkt "+code);
+    if(data.product.brands)name=name+" ("+String(data.product.brands).split(",")[0].trim()+")";
+    const r1=v=>Math.round((+v||0)*10)/10;
+    const P=r1(n.proteins_100g),C=r1(n.carbohydrates_100g),F=r1(n.fat_100g);
+    document.getElementById("niName").value=name;
+    document.getElementById("niP").value=P;document.getElementById("niC").value=C;document.getElementById("niF").value=F;
+    document.getElementById("niUnit").value="";document.getElementById("niG").value="";
+    scanStatus('Gefunden: <b>'+name+'</b> — '+P+' g Eiweiß · '+C+' g KH · '+F+' g Fett /100g. Prüfe die Werte unten und tippe auf Hinzufügen.',true);
+    setTimeout(()=>{try{document.getElementById("scanDlg").close();}catch(e){}document.getElementById("niAdd").scrollIntoView({block:"center",behavior:"smooth"});},1500);
+  }catch(e){scanStatus("Konnte die Produktdatenbank nicht erreichen. Das klappt nur, wenn die App über einen Link (https) mit Internet läuft.");}
+}
+function startScanner(){
+  scanBusy=false;scanStatus("Kamera wird gestartet…");
+  loadQuagga(()=>{
+    try{
+      Quagga.init({
+        inputStream:{type:"LiveStream",target:document.getElementById("scanVideo"),constraints:{facingMode:"environment"}},
+        decoder:{readers:["ean_reader","ean_8_reader","upc_reader","upc_e_reader"]},
+        locate:true
+      },err=>{
+        if(err){scanStatus("📷 Kamera nicht verfügbar. Der Scanner funktioniert nur, wenn die App über einen Link (https) läuft — nicht bei einer lokal geöffneten Datei.");return;}
+        scanStatus("Halte den Barcode vor die Kamera…");
+        Quagga.start();Quagga.offDetected(onBarcode);Quagga.onDetected(onBarcode);
+      });
+    }catch(e){scanStatus("📷 Kamera nicht verfügbar (die App muss über einen Link laufen).");}
+  });
+}
+document.getElementById("scanBtn").onclick=()=>{document.getElementById("scanDlg").showModal();startScanner();};
+document.getElementById("scanDlg").addEventListener("close",stopScanner);
 document.getElementById("niAdd").onclick=()=>{
   const name=document.getElementById("niName").value.trim();
   if(!name){alert("Bitte einen Namen eingeben.");return;}
