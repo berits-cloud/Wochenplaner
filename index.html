@@ -1088,7 +1088,7 @@ document.getElementById("ingTable").addEventListener("click",e=>{
   }
 });
 // ---------- Barcode-Scanner ----------
-let scanBusy=false;
+let scanBusy=false,scanLast=null,scanSame=0;const scanTried=new Set();
 function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
 function loadQuagga(cb){
   if(window.Quagga)return cb();
@@ -1100,15 +1100,20 @@ function loadQuagga(cb){
 }
 function stopScanner(){try{if(window.Quagga){Quagga.offDetected(onBarcode);Quagga.stop();}}catch(e){}}
 function onBarcode(res){
-  if(scanBusy)return;const code=res&&res.codeResult&&res.codeResult.code;if(!code)return;
-  scanBusy=true;stopScanner();lookupBarcode(code);
+  if(scanBusy)return;
+  const code=res&&res.codeResult&&res.codeResult.code;if(!code)return;
+  if(code===scanLast)scanSame++;else{scanLast=code;scanSame=1;}
+  if(scanSame<2)return;               // erst nach 2 gleichen Lesungen akzeptieren (weniger Fehlerkennungen)
+  if(scanTried.has(code)){scanStatus("Diesen Code habe ich schon vergeblich versucht — halte weiter, oder trag das Produkt manuell ein.");return;}
+  scanBusy=true;lookupBarcode(code);  // Kamera läuft weiter, bis ein Treffer da ist
 }
 async function lookupBarcode(code){
   scanStatus("Suche Produkt "+code+" …");
   try{
     const res=await fetch("https://world.openfoodfacts.org/api/v2/product/"+encodeURIComponent(code)+".json?fields=product_name,brands,nutriments");
     const data=await res.json();
-    if(!data||data.status!==1||!data.product){scanStatus("Kein Produkt zu diesem Code gefunden. Du kannst die Werte unten manuell eintragen.");return;}
+    if(!data||data.status!==1||!data.product){scanTried.add(code);scanStatus("Produkt (noch) nicht gefunden — Barcode ruhig und bildfüllend vor die Kamera halten… (ich scanne weiter)");scanBusy=false;scanLast=null;scanSame=0;return;}
+    stopScanner();
     const n=data.product.nutriments||{};
     let name=data.product.product_name||("Produkt "+code);
     if(data.product.brands)name=name+" ("+String(data.product.brands).split(",")[0].trim()+")";
@@ -1119,10 +1124,10 @@ async function lookupBarcode(code){
     document.getElementById("niUnit").value="";document.getElementById("niG").value="";
     scanStatus('Gefunden: <b>'+name+'</b> — '+P+' g Eiweiß · '+C+' g KH · '+F+' g Fett /100g. Prüfe die Werte unten und tippe auf Hinzufügen.',true);
     setTimeout(()=>{try{document.getElementById("scanDlg").close();}catch(e){}document.getElementById("niAdd").scrollIntoView({block:"center",behavior:"smooth"});},1500);
-  }catch(e){scanStatus("Konnte die Produktdatenbank nicht erreichen. Das klappt nur, wenn die App über einen Link (https) mit Internet läuft.");}
+  }catch(e){scanStatus("Konnte die Produktdatenbank kurz nicht erreichen — ich scanne weiter…");scanBusy=false;scanLast=null;scanSame=0;}
 }
 function startScanner(){
-  scanBusy=false;scanStatus("Kamera wird gestartet…");
+  scanBusy=false;scanLast=null;scanSame=0;scanTried.clear();scanStatus("Kamera wird gestartet…");
   loadQuagga(()=>{
     try{
       Quagga.init({
