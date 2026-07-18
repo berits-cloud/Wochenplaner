@@ -508,19 +508,18 @@ function computeRecipeNutrition(rec){
     if(!db||grams==null)return null;
     P+=db.p*grams/100;C+=db.c*grams/100;F+=db.f*grams/100;
   }
-  const s=rec.baseServings||1,pr=P/s,ca=C/s,fa=F/s;
-  return {kcal:kcalFromMacros(pr,ca,fa),protein:Math.round(pr),carbs:Math.round(ca),fat:Math.round(fa)};
-}
-function ingredientKcal(i){
-  const db=ingDb(i.name),g=ingGrams(i);
-  if(!db||g==null)return null;
-  return Math.round(g/100*kcalFromMacros(db.p,db.c,db.f));
+  const s=rec.baseServings||1;
+  const pr=Math.round(P/s),ca=Math.round(C/s),fa=Math.round(F/s);
+  // kcal aus den gerundeten (angezeigten) Werten, damit die Rechnung 4·E + 4·KH + 9·F aufgeht
+  return {kcal:kcalFromMacros(pr,ca,fa),protein:pr,carbs:ca,fat:fa};
 }
 function ingredientNutri(i){
   const db=ingDb(i.name),g=ingGrams(i);
   if(!db||g==null)return null;const k=g/100;
-  return {kcal:Math.round(k*kcalFromMacros(db.p,db.c,db.f)),p:Math.round(db.p*k),c:Math.round(db.c*k),f:Math.round(db.f*k)};
+  const p=Math.round(db.p*k),c=Math.round(db.c*k),f=Math.round(db.f*k);
+  return {kcal:kcalFromMacros(p,c,f),p,c,f};
 }
+function ingredientKcal(i){const n=ingredientNutri(i);return n?n.kcal:null;}
 
 function mainStarters(){
   return [
