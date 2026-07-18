@@ -103,6 +103,12 @@
   .daydot{width:9px;height:9px;border-radius:50%;background:var(--line);border:none;padding:0;cursor:pointer;transition:.15s}
   .daydot.on{background:var(--accent);width:24px;border-radius:5px}
   .swipehint{display:none;text-align:center;color:var(--muted);font-size:12px;margin:2px 0 8px}
+  .ing-mlist{display:flex;flex-direction:column}
+  .ing-mrow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:13px 4px;cursor:pointer}
+  .ing-mrow:active{background:var(--accent-soft)}
+  .ing-mname{font-weight:600;color:var(--ink);font-size:15px}
+  .ing-mrow .ing-msub{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
+  .ing-mrow .chev{color:var(--muted);font-size:18px;flex:none}
   #scanVideo{width:100%;background:#000;border-radius:12px;overflow:hidden;min-height:220px;position:relative}
   #scanVideo video,#scanVideo canvas{width:100%!important;height:auto!important;display:block}
   dialog{border:none;border-radius:16px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.25);max-width:560px;width:92%}
@@ -252,31 +258,32 @@
 
   <!-- ZUTATEN -->
   <section id="tab-zutaten" hidden>
-    <div class="card flex-between">
-      <div>
-        <h2>Zutaten-Nährwerte</h2>
-        <p class="hint" style="margin:0">Werte pro 100 g / 100 ml (Referenzwerte, ca. USDA/BLS). Änderst du hier etwas, rechnen sich alle Rezepte automatisch neu.</p>
-      </div>
-      <input id="ingSearch" placeholder="Suchen…" style="width:180px">
-    </div>
-    <div class="card" style="overflow-x:auto">
-      <table class="amt-table" id="ingTable"></table>
+    <div class="card">
+      <h2 style="margin:0 0 4px">Zutaten-Nährwerte</h2>
+      <p class="hint" style="margin:0"><b>Alle Nährwerte gelten je 100 g</b> (bei Flüssigem wie Milch, Öl oder Kokosmilch je 100 ml). Referenzwerte, ca. USDA/BLS. Änderst du hier etwas, rechnen sich alle Rezepte automatisch neu.</p>
     </div>
     <div class="card">
       <div class="flex-between">
         <h3 style="margin:0">Neue Zutat hinzufügen</h3>
         <button class="btn sec" id="scanBtn">📷 Barcode scannen</button>
       </div>
-      <p class="hint" style="margin:8px 0 12px">Tipp: Mit „Barcode scannen" die Nährwerte eines Produkts automatisch holen (Handy-Kamera, funktioniert wenn die App über einen Link läuft).</p>
+      <p class="hint" style="margin:8px 0 12px">Nährwerte bitte <b>je 100 g bzw. 100 ml</b> eintragen. Tipp: Mit „Barcode scannen" die Werte eines Produkts automatisch holen (Handy-Kamera, funktioniert wenn die App über einen Link läuft).</p>
       <div class="row" style="gap:10px;align-items:flex-end">
         <div style="min-width:150px"><label>Name</label><input id="niName" placeholder="z.B. Magerquark"></div>
-        <div style="width:85px"><label>Eiweiß/100g</label><input id="niP" type="number" min="0" value="0"></div>
-        <div style="width:85px"><label>KH/100g</label><input id="niC" type="number" min="0" value="0"></div>
-        <div style="width:85px"><label>Fett/100g</label><input id="niF" type="number" min="0" value="0"></div>
+        <div style="width:95px"><label>Eiweiß je 100g</label><input id="niP" type="number" min="0" value="0"></div>
+        <div style="width:95px"><label>KH je 100g</label><input id="niC" type="number" min="0" value="0"></div>
+        <div style="width:95px"><label>Fett je 100g</label><input id="niF" type="number" min="0" value="0"></div>
         <div style="width:120px"><label>Einheit (optional)</label><select id="niUnit"><option value="">nur g/ml</option><option>Stück</option><option>EL</option><option>TL</option><option>Scheiben</option><option>Bund</option></select></div>
         <div style="width:120px"><label>1 Einheit = g</label><input id="niG" type="number" min="0" placeholder="z.B. 110"></div>
         <button class="btn" id="niAdd">+ Hinzufügen</button>
       </div>
+    </div>
+    <div class="card">
+      <div class="flex-between" style="margin-bottom:8px">
+        <h3 style="margin:0">Alle Zutaten</h3>
+        <input id="ingSearch" placeholder="Suchen…" style="width:180px">
+      </div>
+      <div id="ingWrap"></div>
     </div>
   </section>
 
@@ -397,6 +404,26 @@
     <div class="row" style="margin-top:18px;justify-content:flex-end">
       <button class="btn ghost" data-close>Abbrechen</button>
       <button class="btn" id="savePerson">Speichern</button>
+    </div>
+  </div>
+</dialog>
+
+<!-- ZUTAT BEARBEITEN (Handy) -->
+<dialog id="ingDlg">
+  <div class="modal-in">
+    <button class="close-x" data-close>×</button>
+    <h3 id="ingDlgTitle">Zutat</h3>
+    <p class="hint" style="margin:0 0 10px">Nährwerte je 100 g / 100 ml — kcal wird automatisch berechnet.</p>
+    <div class="n4">
+      <div><label>Eiweiß (g)</label><input id="idP" type="number" min="0"></div>
+      <div><label>Kohlenh. (g)</label><input id="idC" type="number" min="0"></div>
+      <div><label>Fett (g)</label><input id="idF" type="number" min="0"></div>
+      <div><label>kcal (auto)</label><input id="idK" type="number" readonly tabindex="-1" style="background:#f2efe8;color:var(--muted)"></div>
+    </div>
+    <div id="idUnits" style="margin-top:12px"></div>
+    <div class="flex-between" style="margin-top:18px">
+      <button class="btn danger" id="idDel">Löschen</button>
+      <button class="btn" data-close>Fertig</button>
     </div>
   </div>
 </dialog>
@@ -1045,16 +1072,12 @@ document.getElementById("recipeList").addEventListener("click",e=>{
 // ---------- Ingredient database ----------
 function kcal100(d){return kcalFromMacros(d.p,d.c,d.f);}
 function recomputeAutoRecipes(){state.recipes.forEach(r=>{if(r.autoNutri){const n=computeRecipeNutrition(r);if(n)r.nutrition=n;}});}
-function renderIngredients(){
-  const q=(document.getElementById("ingSearch").value||"").toLowerCase();
-  const t=document.getElementById("ingTable");
-  const names=Object.keys(state.ingredients).filter(n=>n.toLowerCase().includes(q)).sort((a,b)=>a.localeCompare(b));
-  let h=`<thead><tr><th>Zutat</th><th class="num">Eiweiß /100g</th><th class="num">KH /100g</th><th class="num">Fett /100g</th><th class="num">kcal /100g</th><th>Gewicht je Einheit</th><th></th></tr></thead><tbody>`;
+function ingTableHtml(names){
+  let h=`<div style="overflow-x:auto"><table class="amt-table"><thead><tr><th>Zutat</th><th class="num">Eiweiß<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">KH<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">Fett<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">kcal<br><span class="muted" style="font-weight:400">je 100g</span></th><th>Gewicht je Einheit</th><th></th></tr></thead><tbody>`;
   names.forEach(n=>{
-    const d=state.ingredients[n];
+    const d=state.ingredients[n];const dn=n.replace(/"/g,'&quot;');
     const units=d.g?Object.entries(d.g):[];
-    const unitStr=units.length?units.map(([u,g])=>`1 ${u} = <input type="number" min="0" class="ig-unit" data-name="${n.replace(/"/g,'&quot;')}" data-unit="${u}" value="${g}" style="width:54px;padding:3px 5px"> g`).join("<br>"):`<span class="muted">nur g/ml</span>`;
-    const dn=n.replace(/"/g,'&quot;');
+    const unitStr=units.length?units.map(([u,g])=>`1 ${u} = <input type="number" min="0" class="ig-unit" data-name="${dn}" data-unit="${u}" value="${g}" style="width:54px;padding:3px 5px"> g`).join("<br>"):`<span class="muted">nur g/ml</span>`;
     h+=`<tr>
       <td>${n}</td>
       <td class="num"><input type="number" min="0" step="0.1" class="ig-p" data-name="${dn}" value="${d.p}" style="width:62px;padding:4px 6px"></td>
@@ -1065,11 +1088,22 @@ function renderIngredients(){
       <td><button class="btn danger mini ig-del" data-name="${dn}">×</button></td>
     </tr>`;
   });
-  h+=`</tbody>`;
-  t.innerHTML=h;
+  return h+`</tbody></table></div>`;
+}
+function ingListHtml(names){
+  return `<div class="ing-mlist">`+names.map(n=>{const d=state.ingredients[n];const dn=n.replace(/"/g,'&quot;');
+    return `<button class="ing-mrow" data-name="${dn}"><span class="ing-mname">${n}</span><span style="display:flex;align-items:center;gap:8px"><span class="ing-msub">${d.p} E · ${d.c} KH · ${d.f} F · <b>${kcal100(d)}</b> kcal</span><span class="chev">›</span></span></button>`;
+  }).join("")+`</div>`;
+}
+function renderIngredients(){
+  const q=(document.getElementById("ingSearch").value||"").toLowerCase();
+  const names=Object.keys(state.ingredients).filter(n=>n.toLowerCase().includes(q)).sort((a,b)=>a.localeCompare(b));
+  const wrap=document.getElementById("ingWrap");if(!wrap)return;
+  const mobile=window.matchMedia("(max-width:600px)").matches;
+  wrap.innerHTML=mobile?ingListHtml(names):ingTableHtml(names);
 }
 document.getElementById("ingSearch").oninput=renderIngredients;
-document.getElementById("ingTable").addEventListener("input",e=>{
+document.getElementById("ingWrap").addEventListener("input",e=>{
   const el=e.target,name=el.dataset.name;if(!name||!state.ingredients[name])return;
   const d=state.ingredients[name];
   if(el.classList.contains("ig-p"))d.p=+el.value||0;
@@ -1080,13 +1114,40 @@ document.getElementById("ingTable").addEventListener("input",e=>{
   const row=el.closest("tr");const kc=row&&row.querySelector(".ig-kcal");if(kc)kc.textContent=kcal100(d);
   recomputeAutoRecipes();save();renderWeek();renderRecipes();
 });
-document.getElementById("ingTable").addEventListener("click",e=>{
-  const del=e.target.closest(".ig-del");if(!del)return;
-  const name=del.dataset.name;
-  if(confirm(`Zutat „${name}" löschen? Rezepte mit dieser Zutat lassen sich dann nicht mehr automatisch berechnen.`)){
-    delete state.ingredients[name];recomputeAutoRecipes();save();renderIngredients();renderWeek();renderRecipes();
-  }
+document.getElementById("ingWrap").addEventListener("click",e=>{
+  const del=e.target.closest(".ig-del");
+  if(del){const name=del.dataset.name;if(confirm(`Zutat „${name}" löschen? Rezepte mit dieser Zutat lassen sich dann nicht mehr automatisch berechnen.`)){delete state.ingredients[name];recomputeAutoRecipes();save();renderIngredients();renderWeek();renderRecipes();}return;}
+  const row=e.target.closest(".ing-mrow");
+  if(row)openIngredient(row.dataset.name);
 });
+// Zutat im Fenster bearbeiten (Handy)
+const ingDlg=document.getElementById("ingDlg");
+let editingIng=null;
+function openIngredient(name){
+  const d=state.ingredients[name];if(!d)return;editingIng=name;
+  document.getElementById("ingDlgTitle").textContent=name;
+  document.getElementById("idP").value=d.p;document.getElementById("idC").value=d.c;document.getElementById("idF").value=d.f;
+  document.getElementById("idK").value=kcal100(d);
+  const units=d.g?Object.entries(d.g):[];
+  document.getElementById("idUnits").innerHTML=units.length?`<label>Gewicht je Einheit</label>`+units.map(([u,g])=>`<div class="row" style="gap:8px;align-items:center;margin-bottom:6px"><span style="min-width:90px">1 ${u} =</span><input type="number" min="0" class="idu" data-unit="${u}" value="${g}" style="width:90px"> g</div>`).join(""):"";
+  ingDlg.showModal();
+}
+function saveIngFromDlg(){
+  if(!editingIng)return;const d=state.ingredients[editingIng];if(!d)return;
+  d.p=+document.getElementById("idP").value||0;d.c=+document.getElementById("idC").value||0;d.f=+document.getElementById("idF").value||0;
+  document.getElementById("idK").value=kcal100(d);
+  recomputeAutoRecipes();save();renderWeek();renderRecipes();
+}
+["idP","idC","idF"].forEach(id=>document.getElementById(id).addEventListener("input",saveIngFromDlg));
+document.getElementById("idUnits").addEventListener("input",e=>{
+  if(!e.target.classList.contains("idu")||!editingIng)return;const d=state.ingredients[editingIng];
+  d.g=d.g||{};d.g[e.target.dataset.unit]=+e.target.value||0;recomputeAutoRecipes();save();renderWeek();renderRecipes();
+});
+document.getElementById("idDel").onclick=()=>{
+  if(!editingIng)return;
+  if(confirm(`Zutat „${editingIng}" löschen?`)){delete state.ingredients[editingIng];editingIng=null;recomputeAutoRecipes();save();ingDlg.close();renderIngredients();renderWeek();renderRecipes();}
+};
+ingDlg.addEventListener("close",()=>{editingIng=null;renderIngredients();});
 // ---------- Barcode-Scanner ----------
 let scanBusy=false,scanLast=null,scanSame=0;const scanTried=new Set();
 function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
