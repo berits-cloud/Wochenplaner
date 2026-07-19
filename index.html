@@ -1217,10 +1217,15 @@ document.getElementById("idDel").onclick=()=>{
 };
 ingDlg.addEventListener("close",()=>{editingIng=null;renderIngredients();if(document.getElementById("recipeDlg").open){updateNutriFields();updateIngRowNutri();populateIngNames();}});
 // ---------- Lebensmittel suchen (Open Food Facts) ----------
-document.getElementById("foodSearchOpen").onclick=()=>{
+let foodTargetRow=null; // wenn aus dem Rezept-Editor gesucht wird: die Zutaten-Zeile, die danach befüllt wird
+function openFoodSearch(prefill,targetRow){
+  foodTargetRow=targetRow||null;
   document.getElementById("foodResults").innerHTML="";document.getElementById("foodStatus").textContent="";
-  document.getElementById("foodDlg").showModal();setTimeout(()=>document.getElementById("foodQuery").focus(),120);
-};
+  const q=document.getElementById("foodQuery");q.value=prefill||"";
+  document.getElementById("foodDlg").showModal();
+  setTimeout(()=>{q.focus();if((prefill||"").trim().length>=2)doFoodSearch();},120);
+}
+document.getElementById("foodSearchOpen").onclick=()=>openFoodSearch("",null);
 function foodStatus(t){const el=document.getElementById("foodStatus");if(el)el.textContent=t;}
 let foodSeq=0;
 async function doFoodSearch(){
@@ -1255,10 +1260,21 @@ document.getElementById("foodResults").addEventListener("click",e=>{
   const ing={p:+btn.dataset.p||0,c:+btn.dataset.c||0,f:+btn.dataset.f||0,g:null,cat:"Sonstiges"};
   const kv=+btn.dataset.k||0;if(kv>0)ing.k=kv;
   state.ingredients[name]=ing;
-  recomputeAutoRecipes();save();revealIngredient(name);
+  recomputeAutoRecipes();save();
+  if(foodTargetRow){
+    // aus dem Rezept-Editor gesucht: Zutat direkt in die Zeile übernehmen und Fenster schließen
+    const inp=foodTargetRow.querySelector(".i-name");if(inp)inp.value=name;
+    renderIngredients();
+    const row=foodTargetRow;foodTargetRow=null;
+    try{document.getElementById("foodDlg").close();}catch(e){}
+    if(document.getElementById("recipeDlg").open){if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();}
+    return;
+  }
+  revealIngredient(name);
   foodStatus("„"+name+"“ wurde zu deinen Zutaten hinzugefügt.");
   btn.textContent="✓";btn.disabled=true;btn.style.background="var(--accent)";btn.style.color="#fff";
 });
+document.getElementById("foodDlg").addEventListener("close",()=>{foodTargetRow=null;});
 // ---------- Barcode-Scanner ----------
 let scanBusy=false,scanLast=null,scanSame=0;const scanTried=new Set();
 function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
@@ -1358,7 +1374,7 @@ function updateIngRowNutri(){
     const amount=+row.querySelector(".i-amt").value||0;
     const unit=row.querySelector(".i-unit").value;
     if(!name){span.textContent="";return;}
-    if(!ingDb(name)){span.innerHTML=`<span style="color:var(--orange)">Zutat noch nicht in der Datenbank.</span> <button type="button" class="btn sec mini addToDb" data-name="${name.replace(/"/g,'&quot;')}">＋ zur Datenbank</button>`;return;}
+    if(!ingDb(name)){const dn=name.replace(/"/g,'&quot;');span.innerHTML=`<span style="color:var(--orange)">Zutat noch nicht in der Datenbank.</span> <button type="button" class="btn sec mini searchDb" data-name="${dn}">🔎 suchen</button> <button type="button" class="btn sec mini addToDb" data-name="${dn}">＋ selbst anlegen</button>`;return;}
     if(!amount){span.textContent="";return;}
     const n=ingredientNutri({name,amount,unit});
     span.textContent=n?`≈ ${n.kcal} kcal · ${n.p} g Eiweiß · ${n.c} g KH · ${n.f} g Fett`:"";
@@ -1456,6 +1472,7 @@ document.getElementById("addRecipe").onclick=()=>openRecipe(null);
 document.getElementById("addIng").onclick=()=>{document.getElementById("ingRows").insertAdjacentHTML("beforeend",ingRowHtml());updateIngRowNutri();};
 document.getElementById("ingRows").addEventListener("click",e=>{
   if(e.target.classList.contains("i-del")){e.target.closest(".ing-row").remove();if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();return;}
+  const srch=e.target.closest(".searchDb");if(srch){openFoodSearch(srch.dataset.name,srch.closest(".ing-row"));return;}
   const add=e.target.closest(".addToDb");if(add){openIngredientCreate(add.dataset.name);}
 });
 document.getElementById("saveRecipe").onclick=()=>{
@@ -1642,7 +1659,7 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
-const APP_VERSION="1.6 · 19.07.2026";
+const APP_VERSION="1.7 · 19.07.2026";
 (function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
