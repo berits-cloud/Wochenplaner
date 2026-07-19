@@ -115,6 +115,8 @@
   .ing-mlist{display:flex;flex-direction:column}
   .ing-mrow{display:flex;justify-content:space-between;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;border-bottom:1px solid var(--line);padding:13px 4px;cursor:pointer}
   .ing-mrow:active{background:var(--accent-soft)}
+  .ing-flash,tr.ing-flash td{animation:ingflash 1.6s ease-out}
+  @keyframes ingflash{0%,40%{background:var(--accent-soft)}100%{background:transparent}}
   .ing-mname{font-weight:600;color:var(--ink);font-size:15px}
   .ing-mrow .ing-msub{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
   .ing-mrow .chev{color:var(--muted);font-size:18px;flex:none}
@@ -1145,6 +1147,17 @@ function ingListHtml(names){
     return `<button class="ing-mrow" data-name="${dn}"><span class="ing-mname">${n}</span><span style="display:flex;align-items:center;gap:8px"><span class="ing-msub">${d.p} E · ${d.c} KH · ${d.f} F · <b>${kcal100(d)}</b> kcal</span><span class="chev">›</span></span></button>`;
   }).join("")+`</div>`;
 }
+function revealIngredient(name){
+  // Filter zurücksetzen, damit eine neu hinzugefügte Zutat garantiert sichtbar ist
+  const s=document.getElementById("ingSearch");if(s)s.value="";
+  renderIngredients();
+  if(!name)return;
+  const wrap=document.getElementById("ingWrap");if(!wrap)return;
+  const esc=(window.CSS&&CSS.escape)?CSS.escape(name):name.replace(/"/g,'\\"');
+  const el=wrap.querySelector(`[data-name="${esc}"]`);
+  const target=el?(el.closest("tr")||el.closest(".ing-mrow")||el):null;
+  if(target){target.scrollIntoView({block:"center",behavior:"smooth"});target.classList.add("ing-flash");setTimeout(()=>target.classList.remove("ing-flash"),1600);}
+}
 function renderIngredients(){
   const q=(document.getElementById("ingSearch").value||"").toLowerCase();
   const names=Object.keys(state.ingredients).filter(n=>n.toLowerCase().includes(q)).sort((a,b)=>a.localeCompare(b));
@@ -1242,7 +1255,8 @@ document.getElementById("foodResults").addEventListener("click",e=>{
   const ing={p:+btn.dataset.p||0,c:+btn.dataset.c||0,f:+btn.dataset.f||0,g:null,cat:"Sonstiges"};
   const kv=+btn.dataset.k||0;if(kv>0)ing.k=kv;
   state.ingredients[name]=ing;
-  recomputeAutoRecipes();save();renderIngredients();
+  recomputeAutoRecipes();save();revealIngredient(name);
+  foodStatus("„"+name+"“ wurde zu deinen Zutaten hinzugefügt.");
   btn.textContent="✓";btn.disabled=true;btn.style.background="var(--accent)";btn.style.color="#fff";
 });
 // ---------- Barcode-Scanner ----------
@@ -1313,7 +1327,7 @@ document.getElementById("niAdd").onclick=()=>{
   if(unit&&gv)d.g={[unit]:gv};
   state.ingredients[name]=d;
   document.getElementById("niName").value="";document.getElementById("niG").value="";document.getElementById("niP").value=0;document.getElementById("niC").value=0;document.getElementById("niF").value=0;document.getElementById("niK").value="";
-  recomputeAutoRecipes();save();renderIngredients();renderWeek();renderRecipes();
+  recomputeAutoRecipes();save();revealIngredient(name);renderWeek();renderRecipes();
 };
 
 const recipeDlg=document.getElementById("recipeDlg");
@@ -1628,7 +1642,7 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
-const APP_VERSION="1.5 · 19.07.2026";
+const APP_VERSION="1.6 · 19.07.2026";
 (function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
