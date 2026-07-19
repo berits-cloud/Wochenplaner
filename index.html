@@ -1209,14 +1209,18 @@ document.getElementById("foodSearchOpen").onclick=()=>{
   document.getElementById("foodDlg").showModal();setTimeout(()=>document.getElementById("foodQuery").focus(),120);
 };
 function foodStatus(t){const el=document.getElementById("foodStatus");if(el)el.textContent=t;}
+let foodSeq=0;
 async function doFoodSearch(){
-  const q=document.getElementById("foodQuery").value.trim();if(!q)return;
-  foodStatus("Suche läuft…");document.getElementById("foodResults").innerHTML="";
+  const q=document.getElementById("foodQuery").value.trim();
+  if(q.length<2){foodSeq++;document.getElementById("foodResults").innerHTML="";foodStatus(q?"Bitte mindestens 2 Buchstaben eingeben…":"");return;}
+  const myseq=++foodSeq;
+  foodStatus("Suche läuft…");
   try{
     const url="https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(q)+"&search_simple=1&action=process&json=1&page_size=25&fields=product_name,brands,nutriments";
     const res=await fetch(url);const data=await res.json();
+    if(myseq!==foodSeq)return; // veraltete Antwort (schon weitergetippt) ignorieren
     const prods=(data.products||[]).filter(p=>(p.product_name||"").trim()&&p.nutriments&&(p.nutriments.proteins_100g!=null||p.nutriments.carbohydrates_100g!=null||p.nutriments.fat_100g!=null));
-    if(!prods.length){foodStatus("Nichts gefunden. Versuch einen anderen Suchbegriff.");return;}
+    if(!prods.length){foodStatus("Nichts gefunden. Versuch einen anderen Suchbegriff.");document.getElementById("foodResults").innerHTML="";return;}
     foodStatus(prods.length+" Treffer — tippe auf „+“, um eine Zutat zu übernehmen:");
     const r1=v=>Math.round((+v||0)*10)/10;
     document.getElementById("foodResults").innerHTML=prods.map(p=>{
@@ -1226,10 +1230,12 @@ async function doFoodSearch(){
       const dn=name.replace(/"/g,"&quot;").replace(/</g,"&lt;");
       return `<div class="food-row"><div style="flex:1;min-width:0"><div class="ing-mname" style="white-space:normal">${name.replace(/</g,"&lt;")}</div><div class="ing-msub" style="text-align:left">${P} g E · ${C} g KH · ${F} g F · <b>${kc}</b> kcal /100g</div></div><button class="btn mini food-add" data-name="${dn}" data-p="${P}" data-c="${C}" data-f="${F}" data-k="${(realK!=null&&realK!=='')?Math.round(realK):''}">+</button></div>`;
     }).join("");
-  }catch(e){foodStatus("Suche nicht möglich — dafür ist Internet nötig (App über den Link öffnen).");}
+  }catch(e){if(myseq!==foodSeq)return;foodStatus("Suche nicht möglich — dafür ist Internet nötig (App über den Link öffnen).");}
 }
 document.getElementById("foodSearchBtn").onclick=doFoodSearch;
-document.getElementById("foodQuery").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doFoodSearch();}});
+document.getElementById("foodQuery").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();clearTimeout(foodDebounce);doFoodSearch();}});
+let foodDebounce=null;
+document.getElementById("foodQuery").addEventListener("input",()=>{clearTimeout(foodDebounce);foodDebounce=setTimeout(doFoodSearch,400);});
 document.getElementById("foodResults").addEventListener("click",e=>{
   const btn=e.target.closest(".food-add");if(!btn)return;
   const name=btn.dataset.name;
@@ -1622,7 +1628,7 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
-const APP_VERSION="1.4 · 18.07.2026";
+const APP_VERSION="1.5 · 19.07.2026";
 (function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
