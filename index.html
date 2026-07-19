@@ -118,6 +118,8 @@
   .ing-mname{font-weight:600;color:var(--ink);font-size:15px}
   .ing-mrow .ing-msub{font-size:12px;color:var(--muted);text-align:right;white-space:nowrap}
   .ing-mrow .chev{color:var(--muted);font-size:18px;flex:none}
+  #foodResults{max-height:52vh;overflow-y:auto;-webkit-overflow-scrolling:touch}
+  .food-row{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line)}
   #scanVideo{width:100%;background:#000;border-radius:12px;overflow:hidden;min-height:220px;position:relative}
   #scanVideo video,#scanVideo canvas{width:100%!important;height:auto!important;display:block}
   dialog{border:none;border-radius:16px;padding:0;box-shadow:0 20px 60px rgba(0,0,0,.25);max-width:560px;width:92%}
@@ -274,7 +276,10 @@
     <div class="card">
       <div class="flex-between">
         <h3 style="margin:0">Neue Zutat hinzufügen</h3>
-        <button class="btn sec" id="scanBtn">📷 Barcode scannen</button>
+        <div class="row" style="gap:8px">
+          <button class="btn sec" id="foodSearchOpen">🔎 Lebensmittel suchen</button>
+          <button class="btn sec" id="scanBtn">📷 Barcode scannen</button>
+        </div>
       </div>
       <p class="hint" style="margin:8px 0 12px">Nährwerte bitte <b>je 100 g bzw. 100 ml</b> eintragen. Tipp: Mit „Barcode scannen" die Werte eines Produkts automatisch holen (Handy-Kamera, funktioniert wenn die App über einen Link läuft).</p>
       <div class="row" style="gap:10px;align-items:flex-end">
@@ -282,6 +287,7 @@
         <div style="width:95px"><label>Eiweiß je 100g</label><input id="niP" type="number" min="0" value="0"></div>
         <div style="width:95px"><label>KH je 100g</label><input id="niC" type="number" min="0" value="0"></div>
         <div style="width:95px"><label>Fett je 100g</label><input id="niF" type="number" min="0" value="0"></div>
+        <div style="width:110px"><label>kcal je 100g</label><input id="niK" type="number" min="0" placeholder="aus Makros"></div>
         <div style="width:120px"><label>Einheit (optional)</label><select id="niUnit"><option value="">nur g/ml</option><option>Stück</option><option>EL</option><option>TL</option><option>Scheiben</option><option>Bund</option></select></div>
         <div style="width:120px"><label>1 Einheit = g</label><input id="niG" type="number" min="0" placeholder="z.B. 110"></div>
         <button class="btn" id="niAdd">+ Hinzufügen</button>
@@ -347,6 +353,9 @@
       </details>
       <p class="hint" style="margin-top:16px">Alles zurücksetzen (Rezepte, Personen, Plan):</p>
       <button class="btn danger" id="resetAll">Alles zurücksetzen</button>
+    </div>
+    <div class="card" style="text-align:center">
+      <span class="muted" style="font-size:13px">App-Version <b id="appVer"></b></span>
     </div>
   </section>
 </div>
@@ -427,13 +436,29 @@
       <div><label>Eiweiß (g)</label><input id="idP" type="number" min="0"></div>
       <div><label>Kohlenh. (g)</label><input id="idC" type="number" min="0"></div>
       <div><label>Fett (g)</label><input id="idF" type="number" min="0"></div>
-      <div><label>kcal (auto)</label><input id="idK" type="number" readonly tabindex="-1" style="background:#f2efe8;color:var(--muted)"></div>
+      <div><label>kcal je 100g</label><input id="idK" type="number" min="0"></div>
     </div>
+    <p class="hint" style="margin:6px 0 0">kcal leer lassen = aus den Makros berechnen. Bei gescannten/gesuchten Produkten steht hier der echte Packungswert.</p>
     <div id="idUnits" style="margin-top:12px"></div>
     <div class="flex-between" style="margin-top:18px">
       <button class="btn danger" id="idDel">Löschen</button>
       <button class="btn" data-close>Fertig</button>
     </div>
+  </div>
+</dialog>
+
+<!-- LEBENSMITTEL SUCHEN -->
+<dialog id="foodDlg">
+  <div class="modal-in">
+    <button class="close-x" data-close>×</button>
+    <h3>Lebensmittel suchen</h3>
+    <p class="hint" style="margin:0 0 10px">Aus der Open-Food-Facts-Datenbank. Tippe auf „+", um die Nährwerte als Zutat zu übernehmen.</p>
+    <div class="row" style="gap:8px">
+      <input id="foodQuery" placeholder="z.B. Magerquark, Haferflocken…" style="flex:1">
+      <button class="btn" id="foodSearchBtn">Suchen</button>
+    </div>
+    <p class="hint" id="foodStatus" style="margin:8px 0"></p>
+    <div id="foodResults"></div>
   </div>
 </dialog>
 
@@ -502,22 +527,24 @@ function ingGrams(i){
 }
 function computeRecipeNutrition(rec){
   if(!rec.ingredients||!rec.ingredients.length)return null;
-  let P=0,C=0,F=0;
+  let P=0,C=0,F=0,K=0,anyReal=false;
   for(const i of rec.ingredients){
     const db=ingDb(i.name);const grams=ingGrams(i);
-    if(!db||grams==null)return null;
-    P+=db.p*grams/100;C+=db.c*grams/100;F+=db.f*grams/100;
+    if(!db||grams==null)return null;const kk=grams/100;
+    P+=db.p*kk;C+=db.c*kk;F+=db.f*kk;
+    if(db.k!=null){anyReal=true;K+=kk*db.k;}else{K+=kk*(4*db.p+4*db.c+9*db.f);}
   }
   const s=rec.baseServings||1;
   const pr=Math.round(P/s),ca=Math.round(C/s),fa=Math.round(F/s);
-  // kcal aus den gerundeten (angezeigten) Werten, damit die Rechnung 4·E + 4·KH + 9·F aufgeht
-  return {kcal:kcalFromMacros(pr,ca,fa),protein:pr,carbs:ca,fat:fa};
+  // echte kcal (Packung) summieren, sonst aus den gerundeten Makros (Rechnung geht auf)
+  return {kcal:anyReal?Math.round(K/s):kcalFromMacros(pr,ca,fa),protein:pr,carbs:ca,fat:fa};
 }
 function ingredientNutri(i){
   const db=ingDb(i.name),g=ingGrams(i);
   if(!db||g==null)return null;const k=g/100;
   const p=Math.round(db.p*k),c=Math.round(db.c*k),f=Math.round(db.f*k);
-  return {kcal:kcalFromMacros(p,c,f),p,c,f};
+  const kcal=db.k!=null?Math.round(db.k*k):kcalFromMacros(p,c,f); // echter Wert (Packung) bevorzugt
+  return {kcal,p,c,f};
 }
 function ingredientKcal(i){const n=ingredientNutri(i);return n?n.kcal:null;}
 
@@ -1093,7 +1120,7 @@ document.getElementById("recipeList").addEventListener("click",e=>{
 });
 
 // ---------- Ingredient database ----------
-function kcal100(d){return kcalFromMacros(d.p,d.c,d.f);}
+function kcal100(d){return d&&d.k!=null?Math.round(d.k):kcalFromMacros(d.p,d.c,d.f);}
 function recomputeAutoRecipes(){state.recipes.forEach(r=>{if(r.autoNutri){const n=computeRecipeNutrition(r);if(n)r.nutrition=n;}});}
 function ingTableHtml(names){
   let h=`<div style="overflow-x:auto"><table class="amt-table"><thead><tr><th>Zutat</th><th class="num">Eiweiß<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">KH<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">Fett<br><span class="muted" style="font-weight:400">je 100g</span></th><th class="num">kcal<br><span class="muted" style="font-weight:400">je 100g</span></th><th>Gewicht je Einheit</th><th></th></tr></thead><tbody>`;
@@ -1158,10 +1185,15 @@ function openIngredient(name){
 function saveIngFromDlg(){
   if(!editingIng)return;const d=state.ingredients[editingIng];if(!d)return;
   d.p=+document.getElementById("idP").value||0;d.c=+document.getElementById("idC").value||0;d.f=+document.getElementById("idF").value||0;
-  document.getElementById("idK").value=kcal100(d);
+  if(d.k==null)document.getElementById("idK").value=kcalFromMacros(d.p,d.c,d.f);
   recomputeAutoRecipes();save();renderWeek();renderRecipes();
 }
 ["idP","idC","idF"].forEach(id=>document.getElementById(id).addEventListener("input",saveIngFromDlg));
+document.getElementById("idK").addEventListener("input",()=>{
+  if(!editingIng)return;const d=state.ingredients[editingIng];if(!d)return;
+  const v=+document.getElementById("idK").value||0;if(v>0)d.k=v;else delete d.k;
+  recomputeAutoRecipes();save();renderWeek();renderRecipes();
+});
 document.getElementById("idUnits").addEventListener("input",e=>{
   if(!e.target.classList.contains("idu")||!editingIng)return;const d=state.ingredients[editingIng];
   d.g=d.g||{};d.g[e.target.dataset.unit]=+e.target.value||0;recomputeAutoRecipes();save();renderWeek();renderRecipes();
@@ -1170,7 +1202,43 @@ document.getElementById("idDel").onclick=()=>{
   if(!editingIng)return;
   if(confirm(`Zutat „${editingIng}" löschen?`)){delete state.ingredients[editingIng];editingIng=null;recomputeAutoRecipes();save();ingDlg.close();renderIngredients();renderWeek();renderRecipes();}
 };
-ingDlg.addEventListener("close",()=>{editingIng=null;renderIngredients();});
+ingDlg.addEventListener("close",()=>{editingIng=null;renderIngredients();if(document.getElementById("recipeDlg").open){updateNutriFields();updateIngRowNutri();populateIngNames();}});
+// ---------- Lebensmittel suchen (Open Food Facts) ----------
+document.getElementById("foodSearchOpen").onclick=()=>{
+  document.getElementById("foodResults").innerHTML="";document.getElementById("foodStatus").textContent="";
+  document.getElementById("foodDlg").showModal();setTimeout(()=>document.getElementById("foodQuery").focus(),120);
+};
+function foodStatus(t){const el=document.getElementById("foodStatus");if(el)el.textContent=t;}
+async function doFoodSearch(){
+  const q=document.getElementById("foodQuery").value.trim();if(!q)return;
+  foodStatus("Suche läuft…");document.getElementById("foodResults").innerHTML="";
+  try{
+    const url="https://world.openfoodfacts.org/cgi/search.pl?search_terms="+encodeURIComponent(q)+"&search_simple=1&action=process&json=1&page_size=25&fields=product_name,brands,nutriments";
+    const res=await fetch(url);const data=await res.json();
+    const prods=(data.products||[]).filter(p=>(p.product_name||"").trim()&&p.nutriments&&(p.nutriments.proteins_100g!=null||p.nutriments.carbohydrates_100g!=null||p.nutriments.fat_100g!=null));
+    if(!prods.length){foodStatus("Nichts gefunden. Versuch einen anderen Suchbegriff.");return;}
+    foodStatus(prods.length+" Treffer — tippe auf „+“, um eine Zutat zu übernehmen:");
+    const r1=v=>Math.round((+v||0)*10)/10;
+    document.getElementById("foodResults").innerHTML=prods.map(p=>{
+      const n=p.nutriments||{};const P=r1(n.proteins_100g),C=r1(n.carbohydrates_100g),F=r1(n.fat_100g);
+      let name=p.product_name.trim();if(p.brands)name+=" ("+String(p.brands).split(",")[0].trim()+")";
+      const realK=n["energy-kcal_100g"];const kc=(realK!=null&&realK!=="")?Math.round(realK):kcalFromMacros(P,C,F);
+      const dn=name.replace(/"/g,"&quot;").replace(/</g,"&lt;");
+      return `<div class="food-row"><div style="flex:1;min-width:0"><div class="ing-mname" style="white-space:normal">${name.replace(/</g,"&lt;")}</div><div class="ing-msub" style="text-align:left">${P} g E · ${C} g KH · ${F} g F · <b>${kc}</b> kcal /100g</div></div><button class="btn mini food-add" data-name="${dn}" data-p="${P}" data-c="${C}" data-f="${F}" data-k="${(realK!=null&&realK!=='')?Math.round(realK):''}">+</button></div>`;
+    }).join("");
+  }catch(e){foodStatus("Suche nicht möglich — dafür ist Internet nötig (App über den Link öffnen).");}
+}
+document.getElementById("foodSearchBtn").onclick=doFoodSearch;
+document.getElementById("foodQuery").addEventListener("keydown",e=>{if(e.key==="Enter"){e.preventDefault();doFoodSearch();}});
+document.getElementById("foodResults").addEventListener("click",e=>{
+  const btn=e.target.closest(".food-add");if(!btn)return;
+  const name=btn.dataset.name;
+  const ing={p:+btn.dataset.p||0,c:+btn.dataset.c||0,f:+btn.dataset.f||0,g:null,cat:"Sonstiges"};
+  const kv=+btn.dataset.k||0;if(kv>0)ing.k=kv;
+  state.ingredients[name]=ing;
+  recomputeAutoRecipes();save();renderIngredients();
+  btn.textContent="✓";btn.disabled=true;btn.style.background="var(--accent)";btn.style.color="#fff";
+});
 // ---------- Barcode-Scanner ----------
 let scanBusy=false,scanLast=null,scanSame=0;const scanTried=new Set();
 function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
@@ -1203,8 +1271,10 @@ async function lookupBarcode(code){
     if(data.product.brands)name=name+" ("+String(data.product.brands).split(",")[0].trim()+")";
     const r1=v=>Math.round((+v||0)*10)/10;
     const P=r1(n.proteins_100g),C=r1(n.carbohydrates_100g),F=r1(n.fat_100g);
+    const realK=n["energy-kcal_100g"];
     document.getElementById("niName").value=name;
     document.getElementById("niP").value=P;document.getElementById("niC").value=C;document.getElementById("niF").value=F;
+    document.getElementById("niK").value=(realK!=null&&realK!=="")?Math.round(realK):"";
     document.getElementById("niUnit").value="";document.getElementById("niG").value="";
     scanStatus('Gefunden: <b>'+name+'</b> — '+P+' g Eiweiß · '+C+' g KH · '+F+' g Fett /100g. Prüfe die Werte unten und tippe auf Hinzufügen.',true);
     setTimeout(()=>{try{document.getElementById("scanDlg").close();}catch(e){}document.getElementById("niAdd").scrollIntoView({block:"center",behavior:"smooth"});},1500);
@@ -1231,11 +1301,12 @@ document.getElementById("scanDlg").addEventListener("close",stopScanner);
 document.getElementById("niAdd").onclick=()=>{
   const name=document.getElementById("niName").value.trim();
   if(!name){alert("Bitte einen Namen eingeben.");return;}
-  const d={p:+document.getElementById("niP").value||0,c:+document.getElementById("niC").value||0,f:+document.getElementById("niF").value||0,g:null};
+  const d={p:+document.getElementById("niP").value||0,c:+document.getElementById("niC").value||0,f:+document.getElementById("niF").value||0,g:null,cat:"Sonstiges"};
+  const kv=+document.getElementById("niK").value||0;if(kv>0)d.k=kv;
   const unit=document.getElementById("niUnit").value,gv=+document.getElementById("niG").value||0;
   if(unit&&gv)d.g={[unit]:gv};
   state.ingredients[name]=d;
-  document.getElementById("niName").value="";document.getElementById("niG").value="";document.getElementById("niP").value=0;document.getElementById("niC").value=0;document.getElementById("niF").value=0;
+  document.getElementById("niName").value="";document.getElementById("niG").value="";document.getElementById("niP").value=0;document.getElementById("niC").value=0;document.getElementById("niF").value=0;document.getElementById("niK").value="";
   recomputeAutoRecipes();save();renderIngredients();renderWeek();renderRecipes();
 };
 
@@ -1266,10 +1337,18 @@ function updateIngRowNutri(){
     const name=row.querySelector(".i-name").value.trim();
     const amount=+row.querySelector(".i-amt").value||0;
     const unit=row.querySelector(".i-unit").value;
-    if(!name||!amount){span.textContent="";return;}
+    if(!name){span.textContent="";return;}
+    if(!ingDb(name)){span.innerHTML=`<span style="color:var(--orange)">Zutat noch nicht in der Datenbank.</span> <button type="button" class="btn sec mini addToDb" data-name="${name.replace(/"/g,'&quot;')}">＋ zur Datenbank</button>`;return;}
+    if(!amount){span.textContent="";return;}
     const n=ingredientNutri({name,amount,unit});
-    span.textContent=n?`≈ ${n.kcal} kcal · ${n.p} g Eiweiß · ${n.c} g KH · ${n.f} g Fett`:"(nicht in der Zutaten-Datenbank)";
+    span.textContent=n?`≈ ${n.kcal} kcal · ${n.p} g Eiweiß · ${n.c} g KH · ${n.f} g Fett`:"";
   });
+}
+function openIngredientCreate(name){
+  if(!name)return;
+  if(!state.ingredients[name])state.ingredients[name]={p:0,c:0,f:0,g:null,cat:"Sonstiges"};
+  save();
+  openIngredient(name);
 }
 function openRecipe(id){
   editingRecipe=id;
@@ -1355,7 +1434,10 @@ document.getElementById("ingRows").addEventListener("change",e=>{
 });
 document.getElementById("addRecipe").onclick=()=>openRecipe(null);
 document.getElementById("addIng").onclick=()=>{document.getElementById("ingRows").insertAdjacentHTML("beforeend",ingRowHtml());updateIngRowNutri();};
-document.getElementById("ingRows").addEventListener("click",e=>{if(e.target.classList.contains("i-del")){e.target.closest(".ing-row").remove();if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();}});
+document.getElementById("ingRows").addEventListener("click",e=>{
+  if(e.target.classList.contains("i-del")){e.target.closest(".ing-row").remove();if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();return;}
+  const add=e.target.closest(".addToDb");if(add){openIngredientCreate(add.dataset.name);}
+});
 document.getElementById("saveRecipe").onclick=()=>{
   const name=document.getElementById("rName").value.trim();
   if(!name){alert("Bitte einen Namen eingeben.");return;}
@@ -1540,6 +1622,8 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
+const APP_VERSION="1.4 · 18.07.2026";
+(function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
 </script>
