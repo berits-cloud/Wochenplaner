@@ -1277,6 +1277,7 @@ document.getElementById("foodResults").addEventListener("click",e=>{
 document.getElementById("foodDlg").addEventListener("close",()=>{foodTargetRow=null;});
 // ---------- Barcode-Scanner ----------
 let scanBusy=false,scanLast=null,scanSame=0;const scanTried=new Set();
+let scanTargetRow=null; // wenn aus dem Rezept-Editor gescannt wird: die Zutaten-Zeile, die danach befüllt wird
 function scanStatus(t,html){const el=document.getElementById("scanStatus");if(!el)return;if(html)el.innerHTML=t;else el.textContent=t;}
 function loadQuagga(cb){
   if(window.Quagga)return cb();
@@ -1308,6 +1309,17 @@ async function lookupBarcode(code){
     const r1=v=>Math.round((+v||0)*10)/10;
     const P=r1(n.proteins_100g),C=r1(n.carbohydrates_100g),F=r1(n.fat_100g);
     const realK=n["energy-kcal_100g"];
+    if(scanTargetRow){
+      // aus dem Rezept-Editor gescannt: Zutat direkt anlegen und in die Zeile übernehmen
+      const ing={p:P,c:C,f:F,g:null,cat:"Sonstiges"};if(realK!=null&&realK!=="")ing.k=Math.round(realK);
+      state.ingredients[name]=ing;
+      const inp=scanTargetRow.querySelector(".i-name");if(inp)inp.value=name;
+      const row=scanTargetRow;scanTargetRow=null;
+      recomputeAutoRecipes();save();renderIngredients();
+      scanStatus('Gefunden: <b>'+name+'</b> — als Zutat übernommen.',true);
+      setTimeout(()=>{try{document.getElementById("scanDlg").close();}catch(e){}if(document.getElementById("recipeDlg").open){if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();}},1400);
+      return;
+    }
     document.getElementById("niName").value=name;
     document.getElementById("niP").value=P;document.getElementById("niC").value=C;document.getElementById("niF").value=F;
     document.getElementById("niK").value=(realK!=null&&realK!=="")?Math.round(realK):"";
@@ -1332,8 +1344,9 @@ function startScanner(){
     }catch(e){scanStatus("📷 Kamera nicht verfügbar (die App muss über einen Link laufen).");}
   });
 }
-document.getElementById("scanBtn").onclick=()=>{document.getElementById("scanDlg").showModal();startScanner();};
-document.getElementById("scanDlg").addEventListener("close",stopScanner);
+function openScanner(targetRow){scanTargetRow=targetRow||null;document.getElementById("scanDlg").showModal();startScanner();}
+document.getElementById("scanBtn").onclick=()=>openScanner(null);
+document.getElementById("scanDlg").addEventListener("close",()=>{stopScanner();scanTargetRow=null;});
 document.getElementById("niAdd").onclick=()=>{
   const name=document.getElementById("niName").value.trim();
   if(!name){alert("Bitte einen Namen eingeben.");return;}
@@ -1374,7 +1387,7 @@ function updateIngRowNutri(){
     const amount=+row.querySelector(".i-amt").value||0;
     const unit=row.querySelector(".i-unit").value;
     if(!name){span.textContent="";return;}
-    if(!ingDb(name)){const dn=name.replace(/"/g,'&quot;');span.innerHTML=`<span style="color:var(--orange)">Zutat noch nicht in der Datenbank.</span> <button type="button" class="btn sec mini searchDb" data-name="${dn}">🔎 suchen</button> <button type="button" class="btn sec mini addToDb" data-name="${dn}">＋ selbst anlegen</button>`;return;}
+    if(!ingDb(name)){const dn=name.replace(/"/g,'&quot;');span.innerHTML=`<span style="color:var(--orange)">Zutat noch nicht in der Datenbank.</span> <button type="button" class="btn sec mini searchDb" data-name="${dn}">🔎 suchen</button> <button type="button" class="btn sec mini scanDb" data-name="${dn}">📷 scannen</button> <button type="button" class="btn sec mini addToDb" data-name="${dn}">＋ selbst anlegen</button>`;return;}
     if(!amount){span.textContent="";return;}
     const n=ingredientNutri({name,amount,unit});
     span.textContent=n?`≈ ${n.kcal} kcal · ${n.p} g Eiweiß · ${n.c} g KH · ${n.f} g Fett`:"";
@@ -1473,6 +1486,7 @@ document.getElementById("addIng").onclick=()=>{document.getElementById("ingRows"
 document.getElementById("ingRows").addEventListener("click",e=>{
   if(e.target.classList.contains("i-del")){e.target.closest(".ing-row").remove();if(document.getElementById("rAuto").checked)updateNutriFields();updateIngRowNutri();return;}
   const srch=e.target.closest(".searchDb");if(srch){openFoodSearch(srch.dataset.name,srch.closest(".ing-row"));return;}
+  const scn=e.target.closest(".scanDb");if(scn){openScanner(scn.closest(".ing-row"));return;}
   const add=e.target.closest(".addToDb");if(add){openIngredientCreate(add.dataset.name);}
 });
 document.getElementById("saveRecipe").onclick=()=>{
@@ -1659,7 +1673,7 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
-const APP_VERSION="1.7 · 19.07.2026";
+const APP_VERSION="1.8 · 19.07.2026";
 (function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
