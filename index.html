@@ -516,11 +516,13 @@ const INGREDIENT_DB={
  "Banane":N_(1.1,23,0.3,{"Stück":120}),"Apfel":N_(0.3,14,0.2,{"Stück":150}),"Rucola":N_(2.6,3.7,0.7),"Petersilie":N_(3,6,0.8,{"Bund":30}),
  "Kräuter der Provence":N_(0,0,0,{"TL":1}),"Passierte Tomaten":N_(1.2,6,0.2),"Kokosmilch":N_(2,3,21),
  "Currypaste":N_(3,15,5,{"EL":15}),"Sojasauce":N_(8,5,0,{"EL":15}),"Honig":N_(0.3,82,0,{"EL":21,"TL":7}),
- "Gemüsebrühe":N_(0.2,0.4,0.1),"Avocado":N_(2,9,15,{"Stück":140})
+ "Gemüsebrühe":N_(0.2,0.4,0.1),"Avocado":N_(2,9,15,{"Stück":140}),
+ "Räucherlachs":N_(24,0,8),"Hüttenkäse":N_(13,3,5),"Saatenbrot":N_(10,38,9,{"Scheiben":50}),"Blattsalat":N_(1.4,2.9,0.2),
+ "Romanasalat":N_(1.2,3.3,0.3),"Crème fraîche":N_(2.4,3,30),"Cheddar":N_(25,1.3,34),"Frühlingszwiebel":N_(1.8,7,0.2),"Tortilla-Chips":N_(7,63,24)
 };
 function ingDb(name){return (typeof state!=="undefined"&&state&&state.ingredients&&state.ingredients[name])||INGREDIENT_DB[name]||null;}
 function ingredientCategory(name){const d=(typeof state!=="undefined"&&state&&state.ingredients)?state.ingredients[name]:null;return (d&&d.cat)||"Sonstiges";}
-function seedIngredientCats(){const m={};[...mainStarters(),...coldMainStarters(),...breakfastSnackStarters()].forEach(r=>r.ingredients.forEach(i=>{if(!m[i.name])m[i.name]=i.cat;}));return m;}
+function seedIngredientCats(){const m={};[...mainStarters(),...coldMainStarters(),...breakfastSnackStarters(),...bonusRecipes()].forEach(r=>r.ingredients.forEach(i=>{if(!m[i.name])m[i.name]=i.cat;}));return m;}
 function ingGrams(i){
   const db=ingDb(i.name);if(!db)return null;
   if(i.unit==="g"||i.unit==="ml")return i.amount;
@@ -622,7 +624,18 @@ function breakfastSnackStarters(){
      steps:["Apfel in Spalten schneiden.","Mit Mandeln genießen."]}
   ];
 }
-function starterRecipes(){return [...mainStarters(),...coldMainStarters(),...breakfastSnackStarters()];}
+function bonusRecipes(){
+  // Zusätzliche Rezepte (z.B. aus geteilten Links). Werden per migrate() nach Name ergänzt.
+  return [
+    {id:uid(),name:"Räucherlachs & Hüttenkäse auf Saatenbrot mit Salat",type:"fisch",warm:false,meals:["fruehstueck","mittag","abendessen"],baseServings:1,timeMin:10,nutrition:{kcal:0,protein:34,carbs:29,fat:22},
+     ingredients:[c("Saatenbrot",50,"g","Vorrat & Trocken"),c("Hüttenkäse",100,"g","Milch & Eier"),c("Räucherlachs",60,"g","Fleisch & Fisch"),c("Avocado",50,"g","Gemüse & Obst"),c("Kirschtomaten",40,"g","Gemüse & Obst"),c("Blattsalat",30,"g","Gemüse & Obst")],
+     steps:["Saatenbrot mit Hüttenkäse bestreichen.","Räucherlachs darauflegen.","Avocado in Scheiben schneiden und dazugeben.","Kirschtomaten halbieren und mit dem Blattsalat als Beilage anrichten."]},
+    {id:uid(),name:"Bunte Low Carb Taco Bowl",type:"fleisch",warm:true,meals:["mittag","abendessen"],baseServings:2,timeMin:30,nutrition:{kcal:0,protein:37,carbs:15,fat:53},
+     ingredients:[c("Rinderhackfleisch",300,"g","Fleisch & Fisch"),c("Romanasalat",200,"g","Gemüse & Obst"),c("Crème fraîche",100,"g","Milch & Eier"),c("Tomate",70,"g","Gemüse & Obst"),c("Cheddar",50,"g","Milch & Eier"),c("Paprika",40,"g","Gemüse & Obst"),c("Frühlingszwiebel",20,"g","Gemüse & Obst"),c("Avocado",30,"g","Gemüse & Obst"),c("Tortilla-Chips",15,"g","Vorrat & Trocken"),c("Knoblauch",1,"Stück","Gemüse & Obst"),c("Olivenöl",1,"TL","Vorrat & Trocken")],
+     steps:["Hackfleisch mit Öl und gehacktem Knoblauch scharf anbraten, mit Salz, Pfeffer und Paprikapulver würzen, bis es gebräunt und gar ist. Etwas abkühlen lassen.","Salat waschen und in Streifen schneiden, Tomate, Paprika und Avocado klein schneiden. In einer Schüssel Salat als Basis, dann Gemüse, Hackfleisch und geriebenen Cheddar anrichten.","Crème fraîche mit Salz und Pfeffer verrühren und darübergeben. Mit Frühlingszwiebeln und zerbröselten Tortilla-Chips bestreuen."]}
+  ];
+}
+function starterRecipes(){return [...mainStarters(),...coldMainStarters(),...breakfastSnackStarters(),...bonusRecipes()];}
 
 function defaultState(){
   const me={id:uid(),name:"Ich",portion:1,targets:{protein:100,carbs:250,fat:65,kcal:kcalFromMacros(100,250,65)}};
@@ -664,6 +677,8 @@ function migrate(){
   Object.keys(INGREDIENT_DB).forEach(k=>{if(!state.ingredients[k])state.ingredients[k]=JSON.parse(JSON.stringify(INGREDIENT_DB[k]));});
   const catMap=seedIngredientCats();Object.keys(state.ingredients).forEach(k=>{if(!state.ingredients[k].cat)state.ingredients[k].cat=catMap[k]||"Sonstiges";});
   if(!Array.isArray(state.recipes))state.recipes=starterRecipes();
+  // zusätzliche Rezepte (z.B. aus geteilten Links) nach Name ergänzen, falls noch nicht vorhanden
+  {const have=new Set(state.recipes.map(r=>r.name));bonusRecipes().forEach(r=>{if(!have.has(r.name))state.recipes.push(r);});}
   state.recipes.forEach(r=>{if(!Array.isArray(r.meals)||r.meals.length===0)r.meals=["mittag","abendessen"];if(!Array.isArray(r.steps))r.steps=[];if(r.warm===undefined)r.warm=inferWarm(r);});
   state.recipes.forEach(r=>{
     const n=computeRecipeNutrition(r);
@@ -1673,7 +1688,7 @@ document.getElementById("resetAll").onclick=()=>{if(confirm("Wirklich alles zur�
 document.querySelectorAll("dialog [data-close]").forEach(b=>b.onclick=()=>b.closest("dialog").close());
 document.querySelectorAll("dialog").forEach(d=>d.addEventListener("click",e=>{if(e.target===d)d.close();}));
 
-const APP_VERSION="1.8 · 19.07.2026";
+const APP_VERSION="2.0 · 19.07.2026";
 (function(){const el=document.getElementById("appVer");if(el)el.textContent=APP_VERSION;})();
 function renderAll(){renderSettings();renderWeek();renderRecipes();renderPeople();}
 load();renderAll();
